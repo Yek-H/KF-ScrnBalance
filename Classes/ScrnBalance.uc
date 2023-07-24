@@ -304,6 +304,10 @@ struct SVersionedItem {
 };
 var array<SVersionedItem> Versions;
 
+struct SActors {
+    var array<Actor> Actors;
+};
+
 // TSC stuff
 var globalconfig bool bNoTeamSkins;
 // SrvTourneyMode should be used for informative purposes only.
@@ -314,11 +318,7 @@ var transient int SrvTourneyMode;
 replication
 {
     reliable if ( (bNetInitial || bNetDirty) && Role == ROLE_Authority )
-        SrvMinLevel, SrvMaxLevel, HardcoreLevel, bTeamsLocked, bHardcore;
-
-        // flags to replicate config variables
-    reliable if ( bNetInitial && Role == ROLE_Authority )
-        SrvFlags, SrvAchievementFlags;
+        SrvMinLevel, SrvMaxLevel, HardcoreLevel, bTeamsLocked, SrvFlags, SrvAchievementFlags;
 
     // non-config vars and configs vars which seem to replicate fine
     reliable if ( bNetInitial && Role == ROLE_Authority )
@@ -2659,6 +2659,7 @@ function SetGameDifficulty(byte HardcoreDifficulty)
     }
     SetLevels();
     SetStartCash();
+    SetReplicationData();
 }
 
 function SetupSrvInfo()
@@ -3100,12 +3101,11 @@ function DestroyExtraPipebombs()
     local KFPlayerReplicationInfo KFPRI;
     local array<KFPlayerReplicationInfo> KFPRIArray;
     local array<byte> PipeBombCapacity;
-    local int i;
+    local array<SActors> Pipebombs;
+    local int i, c;
 
-    foreach DynamicActors(Class'ScrnPipeBombProjectile',P)
-    {
-        if( !P.bHidden && P.Instigator != none && P.bDetectEnemies )
-        {
+    foreach DynamicActors(Class'ScrnPipeBombProjectile', P) {
+        if( !P.bHidden && P.Instigator != none && P.bDetectEnemies ) {
             KFPRI = KFPlayerReplicationInfo(P.Instigator.PlayerReplicationInfo);
             if ( KFPRI == none || KFPRI.ClientVeteranSkill == none )
                 continue;
@@ -3118,12 +3118,17 @@ function DestroyExtraPipebombs()
                 // KFPRI not found. Add a new record.
                 KFPRIArray[i] = KFPRI;
                 PipeBombCapacity[i] = 2 * KFPRI.ClientVeteranSkill.static.AddExtraAmmoFor(KFPRI, class'PipeBombAmmo');
+                Pipebombs.insert(i, 1);
             }
 
-            if ( PipeBombCapacity[i] > 0 )
-                PipeBombCapacity[i]--;
-            else
-                P.bEnemyDetected = true; // blow up
+            c = Pipebombs[i].Actors.length;
+            if (c >= PipeBombCapacity[i]) {
+                // blow up the oldest pipebomb
+                ScrnPipeBombProjectile(Pipebombs[i].Actors[0]).bEnemyDetected = true;
+                Pipebombs[i].Actors.remove(0, 1);
+                --c;
+            }
+            Pipebombs[i].Actors[c] = P;
         }
     }
 }
@@ -3197,7 +3202,7 @@ function RegisterVersion(string ItemName, int Version)
 
 defaultproperties
 {
-    VersionNumber=96921
+    VersionNumber=96925
     GroupName="KF-Scrn"
     FriendlyName="ScrN Balance"
     Description="Total rework of KF1 to make it modern and the best game in the world while sticking to the roots of the original."
