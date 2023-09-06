@@ -86,6 +86,20 @@ final static function int SearchStrIgnoreCase(out array<string> arr, string val)
     return -1;
 }
 
+final static function int SearchName(out array<name> arr, name val)
+{
+    local int i;
+
+    if (val == '' || arr.length == 0)
+        return -1;
+
+    for (i = 0; i < arr.length; ++i) {
+        if (arr[i] == val)
+            return i;
+    }
+    return -1;
+}
+
 // fancy time formatting
 static final function String FormatTime(int Seconds)
 {
@@ -311,6 +325,37 @@ static function SendPerkList(PlayerController PC)
         }
         s $= string(i + 1) $ ". " $ Perk.default.ShortName $ " - " $ Perk.default.VeterancyName;
         PC.ClientMessage(s);
+    }
+}
+
+static function bool AddGunSkin(class<KFWeaponPickup> BasePickup, class<KFWeaponPickup> SkinnedPickup) {
+    local int i;
+
+    if (BasePickup == none || SkinnedPickup == none) {
+        return false;
+    }
+
+    for (i = 0; i < BasePickup.default.VariantClasses.length; ++i) {
+        if (BasePickup.default.VariantClasses[i] == SkinnedPickup) {
+            return false;
+        }
+    }
+
+    BasePickup.default.VariantClasses[i] = SkinnedPickup;
+    return true;
+}
+
+static function RemoveGunSkin(class<KFWeaponPickup> BasePickup, class<KFWeaponPickup> SkinnedPickup) {
+    local int i;
+
+    if (BasePickup == none) {
+        return;
+    }
+
+    for (i = 0; i < BasePickup.default.VariantClasses.length; ++i) {
+        if (BasePickup.default.VariantClasses[i] == SkinnedPickup) {
+            BasePickup.default.VariantClasses.remove(i--, 1);
+        }
     }
 }
 

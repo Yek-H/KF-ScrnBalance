@@ -33,7 +33,7 @@ var const class<ScrnVestPickup> LightVestClass;     // Warning! LightVestClass m
 var private class<ScrnVestPickup> CurrentVestClass;     // Equipped shield class
 
 var private transient class<KFVeterancyTypes> PrevPerkClass;
-var private transient int PrevPerkLevel;
+var private int PrevPerkLevel;
 
 var bool bCowboyMode;
 
@@ -44,6 +44,7 @@ var transient int             HealthBeforeHealing;
 var transient float           LastDamageTime;
 var transient float           LastExplosionTime;
 var transient float           LastExplosionDistance; // distance between player and explosions's epicenter
+var float                     FallingDamageMod;
 
 // Seems like bonus ammo is fixed in v1051 and not needed anymore
 // var class<Ammunition> BonusAmmoClass;
@@ -85,9 +86,9 @@ var class<KFWeapon> SpecWeapon;
 var byte AmmoStatus;
 var byte SpecWeight, SpecMagAmmo, SpecMags, SpecSecAmmo, SpecNades;
 
-var     transient Frag          PlayerGrenade;
+var transient Frag PlayerGrenade;
 
-var bool bTraderSpeedBoost;
+var deprecated bool bTraderSpeedBoost;
 var float TraderSpeedBoost;
 var bool bAllowMacheteBoost;
 var byte MacheteBoost; // that's one of the most retarded things I've done
@@ -97,6 +98,8 @@ var float CarriedInventorySpeed;        // allows items in the inventory to modi
 var bool bForceCarriedInventorySpeed;  // if true, force speed to CarriedInventorySpeed. Otherwise CarriedInventorySpeed is a multiplier.
 var float MeleeWeightSpeedReduction;  // speed reduction per current weapon weight (kg*uups) for melee weapons
 var float WeaponWeightSpeedReduction;  // speed reduction per current weapon weight (kg*uups) for non-melee weapons
+var transient bool bWasMovementDisabled;
+var transient bool bWantsZoom;
 
 var transient KFMeleeGun QuickMeleeWeapon;
 var transient KFWeapon WeaponToFixClientState;
@@ -148,7 +151,6 @@ simulated function PostBeginPlay()
     if ( SoundGroupClass == none )
         SoundGroupClass = Class'KFMod.KFMaleSoundGroup';
 
-    bTraderSpeedBoost = class'ScrnBalance'.default.Mut.bTraderSpeedBoost;
 }
 
 simulated function PostNetBeginPlay()
@@ -207,7 +209,6 @@ function ReplaceRequiredEquipment()
     }
 }
 
-
 function RecalcWeight()
 {
     local Inventory Inv;
@@ -228,36 +229,45 @@ function RecalcWeight()
     }
 }
 
-
-// Changed MaxCarryWeight to default.MaxCarryWeight, so support with 15/24 weight will move with same speed as other perk 15/15
-// Support with 24/24 weight now will move slower
-// Other code strings are just copy-pasted
-function ModifyVelocity(float DeltaTime, vector OldVelocity)
+simulated function ModifyVelocity(float DeltaTime, vector OldVelocity)
 {
-    local float WeightMod, HealthMod, MovementMod;
-    local float EncumbrancePercentage;
-    local KFGameReplicationInfo KFGRI;
-
-    if ( Controller == none )
-        return;
-
-    KFGRI = KFGameReplicationInfo(Level.GRI);
-
-    if( Role == ROLE_Authority ) {
-        if ( bMovementDisabled && Level.TimeSeconds > StopDisabledTime ) {
-            bMovementDisabled = false;
-        }
-    }
     if ( bMovementDisabled ) {
+        if( Role == ROLE_Authority && Level.TimeSeconds > StopDisabledTime) {
+            bMovementDisabled = false;
+            ModifyVelocity(DeltaTime, OldVelocity);
+            return;
+        }
+
+        bWasMovementDisabled = true;
         if ( Physics == PHYS_Walking ) {
             Velocity.X = 0;
             Velocity.Y = 0;
             Velocity.Z = 0;
         }
-        else if ( Velocity.Z > 0 && KFGRI.BaseDifficulty >= 5 ) {
+        else if ( Velocity.Z > 0 ) {
             Velocity.Z = 0;
         }
     }
+    else if (bWasMovementDisabled) {
+        bWasMovementDisabled = false;
+        CalcGroundSpeed();
+    }
+}
+
+function CalcGroundSpeed()
+{
+    local float WeightMod, MovementMod;
+    local float EncumbrancePercentage;
+    local KFGameReplicationInfo KFGRI;
+    local ScrnBalance Mut;
+
+    if (Role < ROLE_Authority) {
+        // let the server calculate GroundSpeed and replicate it to us
+        return;
+    }
+
+    KFGRI = KFGameReplicationInfo(Level.GRI);
+    Mut = class'ScrnBalance'.default.Mut;
 
     if ( bForceCarriedInventorySpeed ) {
         GroundSpeed = CarriedInventorySpeed;
@@ -268,17 +278,12 @@ function ModifyVelocity(float DeltaTime, vector OldVelocity)
     EncumbrancePercentage = (FMin(CurrentWeight, MaxCarryWeight) / default.MaxCarryWeight); //changed MaxCarryWeight to default.MaxCarryWeight
     // Calculate the weight modifier to speed
     WeightMod = (1.0 - (EncumbrancePercentage * WeightSpeedModifier));
-    // Calculate the health modifier to speed
-    // Do not use HealthMax here because we don't want the bonus health to affect velocity
-    if ( Health >= 100 ) {
-        HealthMod = 1.0;
-    }
-    else {
-        HealthMod = (HealthSpeedModifier * Health/100.0) + (1.0 - HealthSpeedModifier);
-    }
 
     // Apply all the modifiers
-    GroundSpeed = default.GroundSpeed * HealthMod;
+    GroundSpeed = default.GroundSpeed;
+    if (Health < 100) {
+        GroundSpeed *= (HealthSpeedModifier * Health/100.0) + (1.0 - HealthSpeedModifier);
+    }
     GroundSpeed *= WeightMod;
     GroundSpeed += InventorySpeedModifier;
 
@@ -286,14 +291,12 @@ function ModifyVelocity(float DeltaTime, vector OldVelocity)
     if ( KFPRI != none && KFPRI.ClientVeteranSkill != none )
         MovementMod *= KFPRI.ClientVeteranSkill.static.GetMovementSpeedModifier(KFPRI, KFGRI);
     GroundSpeed *= MovementMod;
-    AccelRate = default.AccelRate * MovementMod;
 
-    if ( bTraderSpeedBoost && !KFGRI.bWaveInProgress )
+    if ( Mut.bTraderSpeedBoost && Mut.KF.bTradingDoorsOpen )
         GroundSpeed *= TraderSpeedBoost;
 
     GroundSpeed += MacheteBoost;
 }
-
 
 function PossessedBy(Controller C)
 {
@@ -377,6 +380,7 @@ function bool AddInventory( inventory NewItem )
             }
         }
         CalcCarriedInventorySpeed();
+        CalcGroundSpeed();
         return true;
     }
     return false;
@@ -393,6 +397,7 @@ function DeleteInventory( inventory Item )
             PendingWeapon = QuickMeleeWeapon;
     }
     CalcCarriedInventorySpeed();
+    CalcGroundSpeed();
 }
 
 simulated function SetWeaponAttachment(WeaponAttachment NewAtt)
@@ -660,6 +665,7 @@ simulated function ApplyWeaponStats(Weapon NewWeapon)
         // ScrN Armor can slow down players (or even boost) -- PooSH
         InventorySpeedModifier -= default.GroundSpeed * CurrentVestClass.default.SpeedModifier;
     }
+    CalcGroundSpeed();
 }
 
 function CheckPerkAchievements()
@@ -1606,8 +1612,8 @@ function bool GiveHealth(int HealAmount, int _unused_HealMax)
 
     if( BurnDown > 0 ) {
         if( BurnDown > 1 )
-            BurnDown *= 0.5;
-        LastBurnDamage *= 0.5;
+            BurnDown /= 2;
+        LastBurnDamage /= 2;
     }
 
     // Don't let them heal more than the max health
@@ -1696,6 +1702,7 @@ simulated function AddHealth()
                 }
                 lastHealTime = level.TimeSeconds;
                 ClientHealthToGive = HealthToGive;
+                CalcGroundSpeed();
             }
         }
         else {
@@ -1774,6 +1781,19 @@ function SetAmmoStatus()
     }
 }
 
+simulated function FixZedTimeAim()
+{
+    local int i;
+    local KFFire f;
+
+    for (i = 0; i < 2; ++ i) {
+        f = KFFire(Weapon.GetFireMode(i));
+        if (f != none && f.NumShotsInBurst != -1) {
+            f.NumShotsInBurst = -1; // gets +1 in KFFire.GetSpread()
+        }
+    }
+}
+
 simulated function Tick(float DeltaTime)
 {
     if ( PlayerReplicationInfo == none )
@@ -1806,13 +1826,17 @@ simulated function Tick(float DeltaTime)
     AlphaAmount = 255; // hack to avoid KFHumanPawn of updating KFPRI.ThreeSecondScore
     super.Tick(DeltaTime);
 
-    // bCowboyMode = bCowboyMode && ShieldStrength < 26;
+    if (ScrnPC != none && ScrnPC.bZEDTimeActive && Weapon != none) {
+        // there is a bug KFFire.GetSpread() that does not take into account zed time and keeps stacking NumShotsInBurst,
+        // drastically increasing spread even for single shots.
+        FixZedTimeAim();
+    }
 
     if ( Role == ROLE_Authority ) {
         if ( MacheteBoost > 0 && Level.TimeSeconds > MacheteResetTime ) {
             MacheteBoost = MacheteBoost >> 1;
             MacheteResetTime = Level.TimeSeconds + 2.0;
-            ModifyVelocity(0, Velocity);
+            CalcGroundSpeed();
         }
     }
     else {
@@ -1827,6 +1851,10 @@ simulated function Tick(float DeltaTime)
 
     if ( bViewTarget )
         UpdateSpecInfo();
+
+    if (bWantsZoom) {
+        CheckZoom();
+    }
 }
 
 // each weapon has own light battery
@@ -2194,6 +2222,10 @@ simulated function TakeDamage( int Damage, Pawn InstigatedBy, Vector Hitlocation
     if( Controller!=None && Controller.bGodMode )
         return;
 
+    if (damageType == class'Fell') {
+        Damage *= FallingDamageMod;
+    }
+
     KFDamType = class<KFWeaponDamageType>(damageType);
     if ( InstigatedBy == none ) {
         // Player received non-zombie KF damage from unknown source.
@@ -2247,6 +2279,9 @@ simulated function TakeDamage( int Damage, Pawn InstigatedBy, Vector Hitlocation
     }
 
     super(xPawn).TakeDamage(Damage, instigatedBy, hitLocation, momentum, damageType);
+    Damage = OldHealth - Health;
+    if (Damage == 0)
+        return;
 
     if( class<DamTypeVomit>(DamageType)!=none ) {
         BileCount=7;
@@ -2290,7 +2325,7 @@ simulated function TakeDamage( int Damage, Pawn InstigatedBy, Vector Hitlocation
                         BurnDown = 5;
                     BurnInstigator = InstigatedBy;
                     LastBurnDamage = OriginalDamage;
-                    bBurnified  = true;
+                    bBurnified = true;
                 }
             }
         }
@@ -2317,6 +2352,7 @@ simulated function TakeDamage( int Damage, Pawn InstigatedBy, Vector Hitlocation
         else if ( Health < HealthBeforeHealing )
             HealthBeforeHealing = Health;
     }
+    CalcGroundSpeed();
 }
 
 function Suicide()
@@ -2921,6 +2957,42 @@ function Crap(optional int Amount)
     TP.SetRotation(r);
 }
 
+exec function IronSightZoomIn()
+{
+    local KFWeapon W;
+
+    bWantsZoom = true;
+    W = KFWeapon(Weapon);
+    if (W != none) {
+        W.IronSightZoomIn();
+    }
+}
+
+exec function IronSightZoomOut()
+{
+    local KFWeapon W;
+
+    bWantsZoom = false;
+    W = KFWeapon(Weapon);
+    if (W != none) {
+        W.IronSightZoomOut();
+    }
+}
+
+function CheckZoom()
+{
+    local KFWeapon W;
+
+    if (!bWantsZoom)
+        return;
+
+    W = KFWeapon(Weapon);
+    if (W != none && W.bHasAimingMode && !W.bAimingRifle && !W.bZoomingIn) {
+        W.IronSightZoomIn();
+    }
+}
+
+
 defaultproperties
 {
     HealthRestoreRate=7.0
@@ -2933,6 +3005,7 @@ defaultproperties
     bCheckHorzineArmorAch=true
     strNoSpawnCashToss="Can not drop starting cash"
     HeadshotSound=sound'ProjectileSounds.impact_metal09'
+    AccelRate=1500
     TraderSpeedBoost=1.5
     CarriedInventorySpeed=1.0
     MeleeWeightSpeedReduction=2
@@ -2940,6 +3013,7 @@ defaultproperties
     bAllowMacheteBoost=true
     PrevPerkLevel=-1
     MaxFallSpeed=750
+    FallingDamageMod=1.0
     FartSound=SoundGroup'ScrnSnd.Fart'
     RequiredEquipment(0)="ScrnBalanceSrv.ScrnKnife"
     RequiredEquipment(1)="ScrnBalanceSrv.ScrnSingle"

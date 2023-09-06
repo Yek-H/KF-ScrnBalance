@@ -3,7 +3,7 @@
  * @GitHub: https://github.com/poosh/KF-ScrnBalance
  * @author [ScrN]PooSH, contact via Steam: http://steamcommunity.com/id/scrn-poosh/
  *                      or Discord: https://discord.gg/Y3W5crSXA5
- * Copyright (c) 2012-2022 PU Developing IK, All Rights Reserved.
+ * Copyright (c) 2012-2023 PU Developing IK, All Rights Reserved.
  *****************************************************************************/
 
 class ScrnBalance extends ScrnMutator
@@ -27,7 +27,7 @@ var localized string strOnlyAdmin, strOnlyScrnGT, strOnlyNotInTourney;
 var transient int SrvFlags; // used for network replication of the values below
 var globalconfig bool bSpawn0, bNoStartCashToss, bMedicRewardFromTeam;
 var globalconfig bool bAltBurnMech;
-var globalconfig bool bReplaceNades, bShieldWeight, bBeta;
+var globalconfig bool bReplaceNades, bMedicNades, bShieldWeight, bBeta;
 var globalconfig bool bShowDamages, bAllowWeaponLock;
 var deprecated bool bManualReload, bForceManualReload;
 var globalconfig bool bNoPerkChanges, bPerkChangeBoss, bPerkChangeDead, b10Stars;
@@ -956,6 +956,10 @@ function OnTraderTime()
     KF.WaveCountDown += TradeTimeAddSeconds;
     TradeTimeAddSeconds = 0;
     PauseTimeRemaining = MaxPauseTimePerWave;
+
+    if (bTraderSpeedBoost) {
+        RecalculatePlayerSpeed();
+    }
 }
 
 function OnWaveBegin()
@@ -978,6 +982,10 @@ function OnWaveBegin()
     // ScrnGameType automatically calls SetupPickups() during wave begin.
     if ( ScrnGT == none && !bStoryMode )
         SetupPickups(false);
+
+    if (bTraderSpeedBoost) {
+        RecalculatePlayerSpeed();
+    }
 }
 
 // executes each second while match is in progress
@@ -1070,6 +1078,22 @@ function bool SetCustomValue(name Key, int Value, optional ScrnMutator Publisher
             }
     }
     return false;
+}
+
+function RecalculatePlayerSpeed()
+{
+    local Controller C;
+    local ScrnHumanPawn ScrnPawn;
+
+    for (C = Level.ControllerList; C != None; C = C.NextController) {
+        if (!C.bIsPlayer)
+            continue;
+
+        ScrnPawn = ScrnHumanPawn(C.Pawn);
+        if (ScrnPawn != none) {
+            ScrnPawn.CalcGroundSpeed();
+        }
+    }
 }
 
 
@@ -1757,7 +1781,7 @@ function SetReplicationData()
     if ( bNoStartCashToss )                 SrvFlags = SrvFlags | 0x00000004;
     if ( bMedicRewardFromTeam )             SrvFlags = SrvFlags | 0x00000008;
 
-    // if ( bWeaponFix )                       SrvFlags = SrvFlags | 0x00000010;
+    if ( bMedicNades )                      SrvFlags = SrvFlags | 0x00000010;
     if ( bAltBurnMech )                     SrvFlags = SrvFlags | 0x00000020;
     // if ( bGunslinger )                      SrvFlags = SrvFlags | 0x00000040;
     if ( bTraderSpeedBoost )                SrvFlags = SrvFlags | 0x00000080;
@@ -1792,7 +1816,7 @@ simulated function LoadReplicationData()
     bNoStartCashToss                   = (SrvFlags & 0x00000004) > 0;
     bMedicRewardFromTeam               = (SrvFlags & 0x00000008) > 0;
 
-    // bWeaponFix                         = (SrvFlags & 0x00000010) > 0;
+    bMedicNades                        = (SrvFlags & 0x00000010) > 0;
     bAltBurnMech                       = (SrvFlags & 0x00000020) > 0;
     // bGunslinger                        = (SrvFlags & 0x00000040) > 0;
     bTraderSpeedBoost                  = (SrvFlags & 0x00000080) > 0;
@@ -3202,7 +3226,7 @@ function RegisterVersion(string ItemName, int Version)
 
 defaultproperties
 {
-    VersionNumber=96925
+    VersionNumber=96933
     GroupName="KF-Scrn"
     FriendlyName="ScrN Balance"
     Description="Total rework of KF1 to make it modern and the best game in the world while sticking to the roots of the original."

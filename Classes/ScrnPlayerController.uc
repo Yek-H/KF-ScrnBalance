@@ -205,8 +205,6 @@ simulated function LoadMutSettings()
     if ( Mut != none ) {
         if ( Mut.bHardCore )
             bOtherPlayerLasersBlue = false;
-        if ( ScrnPawn != none )
-            ScrnPawn.bTraderSpeedBoost = Mut.bTraderSpeedBoost;
     }
     else {
         //this shouldn't happen
@@ -605,7 +603,7 @@ exec function TogglePathToTrader()
         case 0:
             PathDestination = 1; // TSC base
             if ( Mut.bTSCGame )
-                break; // otherwise go to next steap
+                break; // otherwise go to next step
         case 1:
             PathDestination = 255; // hide
             break;
@@ -1613,6 +1611,18 @@ simulated function ClientExitZedTime()
     bZEDTimeActive = false;
 }
 
+function EnterZedTime()
+{
+    bZEDTimeActive = true;
+    ClientEnterZedTime();
+}
+
+function ExitZedTime()
+{
+    bZEDTimeActive = false;
+    ClientExitZedTime();
+}
+
 function bool AllowVoiceMessage(name MessageType)
 {
     local float TimeSinceLastMsg;
@@ -2379,14 +2389,16 @@ exec function GunSkin(optional byte index, optional bool bTryNext)
 
                 if ( P.default.VariantClasses[i] == none ) {
                     //bugfix
-                    P.default.VariantClasses.remove(i--,1);
-                    continue;
+                    P.default.VariantClasses.remove(i--, 1);
                 }
-
-                if ( W.Skins[k] == P.default.VariantClasses[i].default.InventoryType.default.Skins[k] )
-                {
-                    index = i + 2;
-                    break;
+                else if (W.Skins[k] == P.default.VariantClasses[i].default.InventoryType.default.Skins[k]) {
+                    if (index == 0) {
+                        index = i + 2;
+                    }
+                    else {
+                        // remove duplicates
+                        P.default.VariantClasses.remove(i--, 1);
+                    }
                 }
             }
         }
@@ -2527,6 +2539,7 @@ exec function PrevWeapon()
         return;
     super.PrevWeapon();
 }
+
 
 // STATES
 

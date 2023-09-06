@@ -13,6 +13,7 @@
 [Lost_Champ]: http://steamcommunity.com/profiles/76561198080088953
 [P-Jay]: http://steamcommunity.com/profiles/76561198052307800
 [ImmortalNub]: https://steamcommunity.com/id/ImmortalNub
+[ivanmagadan]: https://steamcommunity.com/id/ivanmagadan/
 <!-- add other peaople too!!! -->
 
 # Version History
@@ -26,6 +27,59 @@
 ## VERSION 9
 
 -------------------------------------------------------------------------------
+
+### v9.69.33
+- **Pre-Aiming** - allows holding the Aim button while reloading or switching weapons to begin aiming ASAP. Originally, premature button press did nothing and required the player to release and press the button again.
+- Fixed an issue where it was possible to set players on fire despite their immunity to fire damage (Firebugs, teammates, etc. )
+- Fixed Trader Speed Boost at the start of the Trader Time (thanks *Mortimer*)
+- Trader Speed Boost is applied only when Trader doors are open
+- Possible fix for the "LAW not firing" bug (thanks [ivanmagadan])
+- Achievement names and descriptions made localized in the following packages:
+  ScrnBalanceSrv, ScrnWeaponPack, ScrnHTec, ScrnD3Ach
+
+### v9.69.30
+- New game mode **"10. KF Classic 1016"** - restricts perk and weapon loadout to KF v1016 (2010) - the last balanced vanilla version of the game. (check *KFMapVote.ini*)
+- ScrN **Demolitions Expert** spawns with **M4-203** by default. This weapon was not available in v1016, so the following workaround should be added to *ScrnBalanceSrv.ini* (the default config is already patched) to make Demo spawn with M79 in 1016:
+```ini
+SpawnInventory=6:ScrnBalanceSrv.ScrnM4203Pickup:0-255:60+15:150
+SpawnInventory=6-1:ScrnBalanceSrv.ScrnM79Pickup:0-255:12+1:150
+```
+- New game mode **"11. ScrN Classic 1034"** - restricts perk and weapon loadout to KF v1034 + ScrN Balance v1 (2012) - just before the "M99 era" (no DLC weapons). **Gunslinger** is already available.
+- Per-game weapon and perk restriction. Check `AllowWeaponPackages`, `AllowWeaponLists`, `AllowPerks`, and their "Block-" counterparts in *ScrnGames.ini* .
+- New config file *ScrnWeaponLists.ini* used for per-game weapon restriction.
+- New config option `bMedicNades` in *ScrnBalanceSrv.ini* to restore healing hand grenades for **Field Medic**. The option is disabled by default, and ScrN recommends to keep it that way. Use **M79M/M203M** medic grenade launchers instead. Added by the community request. **Tourney Mode** forces `bMedicNades=false`.
+- Fixed the dual pistol fire order issue on high ping servers, where sometimes only one of the pistols was firing all rounds (thanks [ImmortalNub])
+
+### v9.69.29
+- `mutate zed <alias> spawn` command now spawns the last used zed index instead of the first one.
+  For example:
+```
+mutate zed CL spawn         // spawns regular clot
+mutate zed CL 3 spawn       // spawns xmas clot
+mutate zed CL spawn         // spawns xmas clot
+```
+- This feature can be used on **KFT-ScrnTestGrounds-SE** to pre-select the zed variant to spawn on shooting plates.
+
+### v9.69.28
+- Fixed weapon fire **spread** calculation during Zed Time in **Story Game** too
+- Fixed movement speed calculation after picking/dropping a story item
+- **FTG**: Scaled Stinky Clot's movement speed limits according to the original ground speed. Previously, min and max speed were hardcoded constant values. Now, those scale across difficulty and affected by **Speed Boost** mutator.
+
+### v9.69.27
+- Fixed weapon fire **spread** calculation during Zed Time.
+- Fixed an issue that sometimes caused micro-stuttering due to player speed desync.
+- Unfortunately, the micro-stuttering fix prevents **Combat Medic** to gain speed boost in Zed Time.
+- **Combat Medic** deals double damage during Zed Time (as compensation for the speed boost removal)
+
+### v9.69.26
+- Fixed path to Stinky Clot in **FTG** (the green trail).
+- Changed ammo amount received from an ammo box for players with full guns (100% ammo):
+  - if the player has only one weapon that requires ammo (9mm and nades excluding), the gun receives double the amount.
+  - if the player has no guns that require ammo (except 9mm), he/she receives two nades instead of one.
+  - if the player has full ammo and nades, he/she receives extra 60 9mm rounds.
+- Buzzsaw Bow ammo pickup amount lowered to 1 (down from 2) to compensate for the above changes since Buzzsaw Bow usually is the only non-melee weapon in a Berserker's loadout (so Berserker will get two blades anyway).
+- Added duplicate check to `GunSkin` command (thanks [ivanmagadan])
+- New helper functions: `class'ScrnFunctions'.static.AddGunSkin()` and `RemoveGunSkin()`
 
 ### v9.69.25
 #### New Mutator - Speed Boost
